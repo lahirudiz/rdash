@@ -1,167 +1,235 @@
-# Load necessary libraries
-library(dplyr)
+library(shiny)
 library(ggplot2)
-library(corrplot)
-library(class)
-library(e1071)      # For SVM
-library(gbm)        # For Gradient Boosting
-library(caret)      # For confusion matrix
-library(pROC)       # For ROC curve
-library(gridExtra)  # For arranging multiple plots
-
-# Set working directory
-setwd(dirname(rstudioapi::getSourceEditorContext()$path))
+library(dplyr)
+library(DT)
+library(caret)
+library(pROC)
+library(reshape2)
 
 # Load datasets
 student_mat <- read.csv("student-mat.csv")
 student_por <- read.csv("student-por.csv")
 
-# Combine datasets into one unified dataset
-student_data <- bind_rows(student_mat, student_por)
+# Combine datasets
+student_data <- bind_rows(
+  mutate(student_mat, Subject = "Math"),
+  mutate(student_por, Subject = "Portuguese")
+)
 
-# Preview the data structure
-head(student_data)
-summary(student_data)
+# Define UI
+ui <- fluidPage(
+  titlePanel("Student Performance Dashboard with Advanced Analysis"),
+  
+  sidebarLayout(
+    sidebarPanel(
+      selectInput("subject", "Select Subject", choices = c("All", "Math", "Portuguese"), selected = "All"),
+      uiOutput("dynamicFilters"),
+      actionButton("update", "Update View")
+    ),
+    
+    mainPanel(
+      tabsetPanel(
+        tabPanel("Summary Table", DTOutput("summaryTable")),
+        tabPanel("Demographic Overview", 
+                 plotOutput("genderPlot"),
+                 plotOutput("ageDistributionPlot")),
+        tabPanel("Parental Insights", plotOutput("parentEducationPlot")),
+        tabPanel("Study Habits", plotOutput("studyTimePlot")),
+        tabPanel("Marks Insights", 
+                 plotOutput("marksDistributionPlot"),
+                 plotOutput("marksVsStudytimePlot"),
+                 plotOutput("marksVsFailuresPlot")),
+        tabPanel("Correlation Matrix", plotOutput("correlationMatrixPlot")),
+        tabPanel("ROC Curves", plotOutput("rocPlot"))
+      )
+    )
+  )
+)
 
-# Check for missing values in each column
-colSums(is.na(student_data))
+server <- function(input, output, session) {
+  # Generate dynamic filter inputs
+  output$dynamicFilters <- renderUI({
+    data <- if (input$subject == "All") student_data else student_data %>% filter(Subject == input$subject)
+    
+    filter_inputs <- lapply(names(data), function(col) {
+      if (is.numeric(data[[col]])) {
+        sliderInput(
+          inputId = paste0("filter_", col),
+          label = paste("Filter by", col),
+          min = min(data[[col]], na.rm = TRUE),
+          max = max(data[[col]], na.rm = TRUE),
+          value = range(data[[col]], na.rm = TRUE)
+        )
+      } else {
+        selectInput(
+          inputId = paste0("filter_", col),
+          label = paste("Filter by", col),
+          choices = unique(data[[col]]),
+          selected = unique(data[[col]]),
+          multiple = TRUE
+        )
+      }
+    })
+    do.call(tagList, filter_inputs)
+  })
+  
+  # Filter data based on user inputs
+  filtered_data <- reactive({
+    data <- if (input$subject == "All") student_data else student_data %>% filter(Subject == input$subject)
+    
+    for (col in names(data)) {
+      filter_id <- paste0("filter_", col)
+      if (!is.null(input[[filter_id]])) {
+        if (is.numeric(data[[col]])) {
+          data <- data %>% filter(data[[col]] >= input[[filter_id]][1] & data[[col]] <= input[[filter_id]][2])
+        } else {
+          data <- data %>% filter(data[[col]] %in% input[[filter_id]])
+        }
+      }
+    }
+    data
+  })
+  
+  # Render summary table with horizontal scrolling
+  output$summaryTable <- renderDT({
+    datatable(
+      filtered_data(),
+      options = list(
+        scrollX = TRUE,  # Enable horizontal scrolling
+        pageLength = 10  # Set default number of rows displayed
+      ),
+      class = "display nowrap"  # Ensure proper styling for scrolling
+    )
+  })
+  
+  # Gender Distribution
+  output$genderPlot <- renderPlot({
+    data <- filtered_data()
+    ggplot(data, aes(x = "", fill = sex)) +
+      geom_bar(width = 1) +
+      coord_polar("y") +
+      labs(title = "Gender Distribution", fill = "Gender") +
+      theme_minimal()
+  })
+  
+  # Age Distribution
+  output$ageDistributionPlot <- renderPlot({
+    data <- filtered_data()
+    ggplot(data, aes(x = age)) +
+      geom_histogram(binwidth = 1, fill = "skyblue", color = "black") +
+      labs(title = "Age Distribution", x = "Age", y = "Count") +
+      theme_minimal()
+  })
+  
+  # Parental Education Levels
+  output$parentEducationPlot <- renderPlot({
+    data <- filtered_data()
+    ggplot(data, aes(x = Medu, fill = factor(Medu))) +
+      geom_bar() +
+      labs(title = "Parental Education Levels (Mother)", x = "Education Level", y = "Count", fill = "Level") +
+      theme_minimal()
+  })
+  
+  # Study Time vs. Failures
+  output$studyTimePlot <- renderPlot({
+    data <- filtered_data()
+    ggplot(data, aes(x = studytime, y = failures)) +
+      geom_jitter(alpha = 0.6, color = "blue") +
+      labs(title = "Study Time vs Failures", x = "Study Time (hours)", y = "Number of Failures") +
+      theme_minimal()
+  })
+  
+  # Marks Distribution
+  output$marksDistributionPlot <- renderPlot({
+    data <- filtered_data()
+    ggplot(data, aes(x = G3)) +
+      geom_histogram(binwidth = 1, fill = "lightgreen", color = "black") +
+      labs(title = "Marks Distribution", x = "Final Marks (G3)", y = "Frequency") +
+      theme_minimal()
+  })
+  
+  # Marks vs Study Time
+  output$marksVsStudytimePlot <- renderPlot({
+    data <- filtered_data()
+    ggplot(data, aes(x = studytime, y = G3)) +
+      geom_point(color = "purple", alpha = 0.6) +
+      geom_smooth(method = "lm", color = "red", se = FALSE) +
+      labs(title = "Marks vs Study Time", x = "Study Time (hours)", y = "Final Marks (G3)") +
+      theme_minimal()
+  })
+  
+  # Marks vs Failures
+  output$marksVsFailuresPlot <- renderPlot({
+    data <- filtered_data()
+    ggplot(data, aes(x = failures, y = G3)) +
+      geom_jitter(alpha = 0.6, color = "orange") +
+      labs(title = "Marks vs Failures", x = "Number of Failures", y = "Final Marks (G3)") +
+      theme_minimal()
+  })
+  
+  # Correlation Matrix
+  output$correlationMatrixPlot <- renderPlot({
+    data <- filtered_data()
+    num_data <- data %>% select_if(is.numeric)
+    corr_matrix <- cor(num_data, use = "complete.obs")
+    melted_corr <- melt(corr_matrix)
+    
+    ggplot(melted_corr, aes(x = Var1, y = Var2, fill = value)) +
+      geom_tile() +
+      scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = 0, limit = c(-1, 1)) +
+      labs(title = "Correlation Matrix", x = "", y = "") +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  })
+  
+  # ROC Curves with Accuracy Calculation and Display
+  output$rocPlot <- renderPlot({
+    data <- filtered_data()
+    
+    # Define binary target variable for modeling
+    data$pass_fail <- ifelse(data$G3 >= 10, "Pass", "Fail")
+    data$pass_fail <- factor(data$pass_fail, levels = c("Fail", "Pass"))
+    
+    # Split data into training and testing sets
+    set.seed(123)
+    train_idx <- createDataPartition(data$pass_fail, p = 0.7, list = FALSE)
+    train_data <- data[train_idx, ]
+    test_data <- data[-train_idx, ]
+    
+    # Train models
+    knn_model <- train(pass_fail ~ studytime + failures + age, data = train_data, method = "knn")
+    svm_model <- train(pass_fail ~ studytime + failures + age, data = train_data, method = "svmLinear",
+                       trControl = trainControl(classProbs = TRUE))
+    gbm_model <- train(pass_fail ~ studytime + failures + age, data = train_data, method = "gbm", verbose = FALSE)
+    
+    # Generate predictions
+    knn_pred <- predict(knn_model, test_data, type = "prob")[, 2]
+    svm_pred <- predict(svm_model, test_data, type = "prob")[, 2]
+    gbm_pred <- predict(gbm_model, test_data, type = "prob")[, 2]
+    
+    # Remove NA values from predictions
+    valid_idx <- complete.cases(knn_pred, svm_pred, gbm_pred)
+    knn_pred <- knn_pred[valid_idx]
+    svm_pred <- svm_pred[valid_idx]
+    gbm_pred <- gbm_pred[valid_idx]
+    test_data <- test_data[valid_idx, ]
+    
+    # Generate ROC curves
+    knn_roc <- roc(test_data$pass_fail, knn_pred)
+    svm_roc <- roc(test_data$pass_fail, svm_pred)
+    gbm_roc <- roc(test_data$pass_fail, gbm_pred)
+    
+    # Plot ROC curves and accuracy
+    plot(knn_roc, col = "blue", main = "ROC Curves for KNN, SVM, GBM")
+    lines(svm_roc, col = "red")
+    lines(gbm_roc, col = "green")
+    legend("bottomright", legend = c(
+      paste("KNN (AUC =", round(auc(knn_roc), 2), ")"),
+      paste("SVM (AUC =", round(auc(svm_roc), 2), ")"),
+      paste("GBM (AUC =", round(auc(gbm_roc), 2), ")")
+    ), col = c("blue", "red", "green"), lty = 1)
+  })
+}
 
-# Create an average grade feature
-student_data <- student_data %>%
-  mutate(avg_grade = (G1 + G2 + G3) / 3)
-
-# Preview the data structure after average grade
-head(student_data)
-summary(student_data)
-
-#------------------- PART 03 / 04 ---------------------
-
-# T-test for romantic relationship impact on grades
-t_test_result <- t.test(G3 ~ romantic, data = student_data)
-print(t_test_result)
-
-# Linear regression model
-model <- lm(G3 ~ studytime + absences + Medu + Fedu, data = student_data)
-summary(model)
-
-# Convert final grade to binary outcome (pass/fail)
-student_data <- student_data %>%
-  mutate(pass_fail = ifelse(G3 >= 10, "pass", "fail"))
-
-# Chi-square test for association between family support and pass/fail outcome
-chi_test <- chisq.test(student_data$famsup, student_data$pass_fail)
-print(chi_test)
-
-#------------------- Data Preparation for Models ---------------------
-
-# Ensure that the target variable is binary
-student_data <- student_data %>%
-  mutate(pass_fail_binary = ifelse(pass_fail == "pass", 1, 0))
-
-# Set up the training and testing data
-set.seed(123)
-train_indices <- sample(1:nrow(student_data), 0.8 * nrow(student_data))
-train_data <- student_data[train_indices, ]
-test_data <- student_data[-train_indices, ]
-
-# Define predictor variables
-predictors <- c("studytime", "absences", "Medu", "Fedu")
-
-#------------------- K-Nearest Neighbors (KNN) ---------------------
-
-# Prepare data for KNN
-train_data_knn <- train_data[, predictors]
-test_data_knn <- test_data[, predictors]
-
-# Normalize the predictor variables
-train_data_knn <- scale(train_data_knn)
-test_data_knn <- scale(test_data_knn)
-
-# Apply KNN
-k <- 6
-knn_pred <- knn(train = train_data_knn, test = test_data_knn, 
-                cl = train_data$pass_fail_binary, k = k)
-
-# Confusion matrix to evaluate KNN model performance
-confusion_matrix_knn <- confusionMatrix(factor(knn_pred), factor(test_data$pass_fail_binary), positive = "1")
-print(confusion_matrix_knn)
-
-# Accuracy calculation for KNN
-knn_accuracy <- sum(knn_pred == test_data$pass_fail_binary) / length(knn_pred)
-print(paste("KNN Accuracy: ", round(knn_accuracy * 100, 2), "%"))
-
-#------------------- Support Vector Machine (SVM) ---------------------
-
-# Train the SVM model
-svm_model <- svm(pass_fail_binary ~ studytime + absences + Medu + Fedu,
-                 data = train_data,
-                 type = "C-classification",
-                 kernel = "linear")
-
-# Make predictions on the test data
-svm_pred <- predict(svm_model, test_data)
-
-# Confusion matrix to evaluate SVM performance
-confusion_matrix_svm <- confusionMatrix(factor(svm_pred), factor(test_data$pass_fail_binary), positive = "1")
-print(confusion_matrix_svm)
-
-# SVM accuracy calculation
-svm_accuracy <- sum(svm_pred == test_data$pass_fail_binary) / length(svm_pred)
-print(paste("SVM Accuracy: ", round(svm_accuracy * 100, 2), "%"))
-
-#------------------- Gradient Boosting (GBM) ---------------------
-
-# Train the Gradient Boosting model
-set.seed(123)
-gbm_model <- gbm(pass_fail_binary ~ studytime + absences + Medu + Fedu,
-                 data = train_data,
-                 distribution = "bernoulli",
-                 n.trees = 500,          # Number of trees
-                 interaction.depth = 3,  # Depth of trees
-                 shrinkage = 0.01,       # Learning rate
-                 cv.folds = 5)           # Cross-validation folds
-
-# Summarize the GBM model
-summary(gbm_model)
-
-# Predict on the test data
-gbm_pred <- predict(gbm_model, test_data, n.trees = gbm_model$n.trees, type = "response")
-
-# Convert predictions to binary (0/1) using a threshold of 0.5
-gbm_pred_binary <- ifelse(gbm_pred > 0.5, 1, 0)
-
-# Confusion matrix to evaluate GBM performance
-confusion_matrix_gbm <- confusionMatrix(factor(gbm_pred_binary), factor(test_data$pass_fail_binary), positive = "1")
-print(confusion_matrix_gbm)
-
-# GBM accuracy calculation
-gbm_accuracy <- sum(gbm_pred_binary == test_data$pass_fail_binary) / length(gbm_pred_binary)
-print(paste("Gradient Boosting Accuracy: ", round(gbm_accuracy * 100, 2), "%"))
-
-#------------------- VISUALIZATIONS ---------------------
-
-# ROC Curves
-knn_roc <- roc(test_data$pass_fail_binary, as.numeric(knn_pred))
-svm_roc <- roc(test_data$pass_fail_binary, as.numeric(svm_pred))
-gbm_roc <- roc(test_data$pass_fail_binary, gbm_pred)
-
-plot(knn_roc, col = "blue", main = "ROC Curves for Models", lwd = 2)
-lines(svm_roc, col = "red", lwd = 2)
-lines(gbm_roc, col = "green", lwd = 2)
-legend("bottomright", legend = c("KNN", "SVM", "GBM"),
-       col = c("blue", "red", "green"), lwd = 2)
-
-# Accuracy Comparison Bar Plot
-accuracies <- c(knn_accuracy, svm_accuracy, gbm_accuracy)
-model_names <- c("KNN", "SVM", "GBM")
-barplot(accuracies * 100, names.arg = model_names, col = c("skyblue", "orange", "green"),
-        main = "Accuracy Comparison of Models", ylab = "Accuracy (%)", ylim = c(0, 100))
-
-# Predicted Probabilities vs. Observed Outcomes for GBM
-ggplot(data = test_data, aes(x = gbm_pred, y = as.numeric(pass_fail_binary))) +
-  geom_point(color = "blue", alpha = 0.6) +
-  geom_smooth(method = "lm", se = FALSE, color = "red") +
-  labs(title = "Predicted Probabilities vs. Observed Outcomes",
-       x = "Predicted Probability (GBM)", y = "Observed Outcome") +
-  theme_minimal()
-
+# Run the app
+shinyApp(ui = ui, server = server)
