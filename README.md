@@ -36,7 +36,7 @@ install.packages(
 
 <h1>UI Layout</h1>
 <p>The user interface (UI) is divided into a sidebar and a main panel.</p>
-![UI Layout](assets/images/ui-layout.jpeg)
+<img src="assets/images/ui-layout.jpeg" alt="UI Layout"/>
 
 <h2>Sidebar</h2>
 <ul>
@@ -79,7 +79,7 @@ install.packages(
 <h1>Detailed Explanation of Each Tab</h1>
 
 <h2>Summary Table</h2>
-![Summary Table](assets/images/summery-table.jpeg)
+<img src="assets/images/summery-table.jpeg" alt="Summary Table"/>
 
 <ul>
   <li>
@@ -97,24 +97,24 @@ install.packages(
   <li><strong>Gender Distribution:</strong> Pie chart of gender breakdown.</li>
   <li><strong>Age Distribution:</strong> Histogram of student ages.</li>
 </ul>
-![Demographic Overview](assets/images/demographic-overview.jpeg)
+<img src="assets/images/demographic-overview.jpeg" alt="Demographic Overview"/>
 
 <h2>Parental Insights</h2>
-![Parental Insights](assets/images/parental-insights.jpeg)
+<img src="assets/images/parental-insights.jpeg" alt="Parental Insights"/>
 <p>
   <strong>Parental Education Levels:</strong> Plot of student counts by
   mother’s and father’s education, showing potential performance links.
 </p>
 
 <h2>Study Habits Insights</h2>
-![Study Habits Insights](assets/images/study-habits.jpeg)
+<img src="assets/images/study-habits.jpeg" alt="Study Habits Insights"/>
 <p>
   <strong>Study Time vs Failures:</strong> Scatter plot of study time
   against failure count, illustrating their correlation.
 </p>
 
 <h2>Marks Insights</h2>
-![Marks Insights](assets/images/marks-insights.jpeg)
+<img src="assets/images/marks-insights.jpeg" alt="Marks Insights"/>
 <ul>
   <li><strong>Marks Distribution:</strong> Histogram of final marks (G3).</li>
   <li><strong>Marks vs Study Time:</strong> Scatter plot of marks vs study time.</li>
@@ -122,14 +122,14 @@ install.packages(
 </ul>
 
 <h2>Correlation Matrix</h2>
-![Correlation Matrix](assets/images/correlation-matrix.jpeg)
+<img src="assets/images/correlation-matrix.jpeg" alt="Correlation Matrix"/>
 <p>
   <strong>Heatmap:</strong> Correlation matrix for numeric variables
   (age, marks, study time, failures). Positive in red, negative in blue.
 </p>
 
 <h2>ROC Curves</h2>
-![ROC Curves](assets/images/roc-curves.jpeg)
+<img src="assets/images/roc-curves.jpeg" alt="ROC Curves"/>
 <p>
   <strong>ROC for KNN, SVM, GBM:</strong> Plots with AUC values in the legend
   to compare model performance.
